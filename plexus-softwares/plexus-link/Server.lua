@@ -5,7 +5,12 @@ shell.run("clear")
 rednet.open("left")
 local id
 local message
-local blocked = ""
+if fs.exists("\\blocked.txt") then
+    local file = fs.open("\\blocked.txt", "r")
+    local blocked = file.readAll()
+else
+    blocked = ""
+end
 local function log(text, importance)
     local prevColor = term.getTextColor()
     if importance == 1 then
@@ -23,22 +28,14 @@ local function log(text, importance)
     term.setTextColor(prevColor)
     return 1
 end
-local function gFile(id, file)
-if fs.exists("files/"..file) then
-    local file = fs.open("files/"..file, "r")
-    local content = file.readAll()
-    rednet.send(id, content)
-end
-end
-local function sFile(content, file)
-if fs.exists("files/"..file) then
-    fs.delete("files/"..file)
-end
-    local file = fs.open("files/"..file, "w")
-    file.write(content)
-end
 local function block(id)
-    local blocked = blocked.."+"..id
+    blocked = blocked.."+"..id
+    if fs.exists("\\blocked.txt") then
+        fs.delete("\\blocked.txt")
+    end
+    local file = fs.open("\\blocked.txt", "w")
+    file.write(blocked)
+    file.close()
 end
 local function checkblock(id)
     if string.find(blocked, "+"..id) == nil then
@@ -47,26 +44,34 @@ local function checkblock(id)
         return 1
     end
 end
-local function secCheck(Sstring)
-    if not type(Sstring) == "string" then
-        log("invalid secCheck")
+local function gFile(id, file)
+    if string.find(file, "\\") then
+        log(id..": tryed read outside files/ | Blocked", 3)
+        block(id)
+    else
+    if fs.exists("files/"..file) then
+        local file = fs.open("files/"..file, "r")
+        local content = file.readAll()
+        rednet.send(id, content)
+        log(id..":Got file", 1)
+        file.close()
     end
-    if not string.find(Sstring, "shell") == nil then
-        return 1
     end
-    if not string.find(Sstring, "rom") == nil then
-        return 1
+end
+local function sFile(id, content, file)
+    --new security system
+    if string.find(file, "\\") then
+        log(id..": send dangerous file Blocked", 3)
+        block(id)
+    else
+        if fs.exists("files/"..file) then
+            fs.delete("files/"..file)
+        end
+            local file = fs.open("files/"..file, "w")
+            file.write(content)
+            file.close()
+            log(id..":Sended file", 1)
     end
-    if not string.find(Sstring, "startup") == nil then
-        return 1
-    end
-    if not string.find(Sstring, "\\") == nil then
-        return 1
-    end
-    if not string.find(Sstring, "..") == nil then
-        return 1
-    end
-return 0
 end
 local function RequestCheck(id, request)
     if type(request) == "string" or type(request) == "nil" or type(request) == "function" or type(request) == "number" then
@@ -83,24 +88,12 @@ local function RequestCheck(id, request)
                 else
                     -- if everything right here are the checks
                     if request[1] == "get" then
-                        if not secCheck(request[2]) == 0 then
                         gFile(id, request[2]) -- still gotta make geting algorythm
-                        log(id..":Got file", 1)
                         return 1
-                        else
-                            log(id..": tryed ilegal name", 3)
-                            block(id)
-                        end
                     end
                     if request[1] == "send" then
-                        if not secCheck(request[3]) == 0 then
-                        sFile(request[2], request[3]) -- Still gotta make The saving algorythm
-                        log(id..":Sended file", 1)
+                        sFile(id, request[2], request[3]) -- Still gotta make The saving algorythm
                         return 1
-                        else
-                            log(id..": tryed ilegal name", 3)
-                            block(id)
-                        end
                     end
             end
             else
@@ -113,8 +106,9 @@ print("Plexus-Server-Alpha")
 while true do
     local id, message = rednet.receive()
     if checkblock(id) == 1 then
-        log(id..": tryed but is blocked", 3)
+    log(id..": tryed but is blocked", 3)
     else
     RequestCheck(id, message)
     end
 end
+
